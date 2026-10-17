@@ -1,1 +1,1 @@
-../../../vendor/oplus/kernel/misc/sim_detect.c
+../../../peacock_mods/source/vendor/oplus/kernel/misc/sim_detect.c

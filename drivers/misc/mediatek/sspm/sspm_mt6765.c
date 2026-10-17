@@ -172,6 +172,7 @@ static const struct dev_pm_ops mt6765_sspm_dev_pm_ops = {
 
 static const struct of_device_id mt6765_sspm_of_match[] = {
 	{ .compatible = "mediatek,mt6765-sspm", },
+	{ .compatible = "mediatek,sspm", }, /* cactus 4.9 DT */
 	{},
 };
 

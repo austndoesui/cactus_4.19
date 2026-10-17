@@ -1,1 +1,1 @@
-../../vendor/oplus/kernel/oplus_performance/process_reclaim/process_mm_reclaim.c
+../../peacock_mods/source/vendor/oplus/kernel/oplus_performance/process_reclaim/process_mm_reclaim.c

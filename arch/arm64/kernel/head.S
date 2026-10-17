@@ -116,13 +116,35 @@ pe_header:
 	 *  x24        __primary_switch() .. relocate_kernel()
 	 *                                        current RELR displacement
 	 */
+	.macro	PCS_STEP num
+	ldr	x9, =0x47d60018
+	mov	x10, #\num
+	str	x10, [x9]
+	.endm
+
 ENTRY(stext)
+	/* PCS_ASM_MARK: early physical marker, MMU off. x0=FDT phys */
+	ldr	x9, =0x47d60000
+	ldr	x10, =0x304d53412d534350	/* 'PCS-ASM0' */
+	str	x10, [x9]
+	str	x0, [x9, #8]
+	ldr	x10, =0x3730303042534350	/* 'PCSB0007' build tag */
+	str	x10, [x9, #0x28]
+	PCS_STEP 1
 	bl	preserve_boot_args
+	PCS_STEP 2
 	bl	el2_setup			// Drop to EL1, w0=cpu_boot_mode
+	PCS_STEP 3
 	adrp	x23, __PHYS_OFFSET
 	and	x23, x23, MIN_KIMG_ALIGN - 1	// KASLR offset, defaults to 0
 	bl	set_cpu_boot_mode_flag
+	PCS_STEP 4
 	bl	__create_page_tables
+	PCS_STEP 5
+	/* PCS_ASM_MARK PCS-ASM1 */
+	ldr	x9, =0x47d60010
+	ldr	x10, =0x314d53412d534350	/* 'PCS-ASM1' */
+	str	x10, [x9]
 	/*
 	 * The following calls CPU setup code, see arch/arm64/mm/proc.S for
 	 * details.
@@ -288,6 +310,7 @@ ENDPROC(preserve_boot_args)
  */
 __create_page_tables:
 	mov	x28, lr
+	PCS_STEP 6
 
 	/*
 	 * Invalidate the idmap and swapper page tables to avoid potential
@@ -310,6 +333,7 @@ __create_page_tables:
 	stp	xzr, xzr, [x0], #16
 	subs	x1, x1, #64
 	b.ne	1b
+	PCS_STEP 7
 
 	mov	x7, SWAPPER_MM_MMUFLAGS
 
@@ -372,6 +396,7 @@ __create_page_tables:
 	adr_l	x6, __idmap_text_end		// __pa(__idmap_text_end)
 
 	map_memory x0, x1, x3, x6, x7, x3, x4, x10, x11, x12, x13, x14
+	PCS_STEP 8
 
 	/*
 	 * Map the kernel image (starting with PHYS_OFFSET).
@@ -386,6 +411,7 @@ __create_page_tables:
 	add	x6, x6, x5			// runtime __va(_end)
 
 	map_memory x0, x1, x5, x6, x7, x3, x4, x10, x11, x12, x13, x14
+	PCS_STEP 9
 
 	/*
 	 * Since the page tables have been populated with non-cacheable
@@ -932,6 +958,10 @@ ENDPROC(__relocate_kernel)
 #endif
 
 __primary_switch:
+	/* PCS_ASM_MARK PCS-ASM2 */
+	ldr	x9, =0x47d60020
+	ldr	x10, =0x324d53412d534350	/* 'PCS-ASM2' */
+	str	x10, [x9]
 #ifdef CONFIG_RANDOMIZE_BASE
 	mov	x19, x0				// preserve new SCTLR_EL1 value
 	mrs	x20, sctlr_el1			// preserve old SCTLR_EL1 value

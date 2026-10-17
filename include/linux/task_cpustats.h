@@ -1,1 +1,1 @@
-../../../vendor/oplus/kernel/oplus_performance/oplus_task_cpustats/task_cpustats.h
+../../../peacock_mods/source/vendor/oplus/kernel/oplus_performance/oplus_task_cpustats/task_cpustats.h

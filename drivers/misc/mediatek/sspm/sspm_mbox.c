@@ -45,6 +45,9 @@ uint32_t *sspm_mbox_addr(unsigned int mbox, unsigned int slot)
 {
 	struct sspm_mbox *desc = &sspmmbox[mbox];
 
+	if (!desc->base) /* PCS null guard */
+		return NULL;
+
 	return (uint32_t *)(desc->base + (MBOX_SLOT_SIZE * slot));
 }
 
@@ -52,6 +55,9 @@ int sspm_mbox_read(unsigned int mbox, unsigned int slot, void *data,
 	unsigned int len)
 {
 	struct sspm_mbox *desc = &sspmmbox[mbox];
+
+	if (!desc->base) /* PCS null guard */
+		return -1;
 
 	if (data)
 		memcpy_from_sspm(data, desc->base + (MBOX_SLOT_SIZE * slot),
@@ -65,6 +71,9 @@ int sspm_mbox_write(unsigned int mbox, unsigned int slot, void *data,
 	unsigned int len)
 {
 	struct sspm_mbox *desc = &sspmmbox[mbox];
+
+	if (!desc->base) /* PCS null guard */
+		return -1;
 
 	if (data)
 		memcpy_to_sspm(desc->base + (MBOX_SLOT_SIZE * slot), data,
@@ -83,6 +92,9 @@ int sspm_mbox_polling(unsigned int mbox, unsigned int irq, unsigned int slot,
 	unsigned long flags = 0;
 
 	desc = &sspmmbox[mbox];
+
+	if (mbox >= sspm_mbox_cnt || !desc->in_out) /* PCS null guard */
+		return -1;
 
 	irq = 0x1 << irq;
 

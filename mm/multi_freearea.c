@@ -1,1 +1,1 @@
-../../vendor/oplus/kernel/oplus_performance/multi_freearea/multi_freearea.c
+../../peacock_mods/source/vendor/oplus/kernel/oplus_performance/multi_freearea/multi_freearea.c

@@ -557,6 +557,28 @@ static void __init mm_init(void)
 	pti_init();
 }
 
+
+/* ==== PCS early pstore canary (temporary diagnostics) ==== */
+static void __init pcs_canary(const char *msg)
+{
+	u64 a;
+	size_t len = strlen(msg);
+
+	if (len > 240)
+		len = 240;
+	for (a = 0x47c90000ULL; a < 0x47d60000ULL; a += 0x10000ULL) {
+		volatile u32 *h = (volatile u32 *)phys_to_virt(a);
+		u8 *d = (u8 *)h + 12;
+
+		h[0] = 0x43474244;	/* PERSISTENT_RAM_SIG ^ 0 */
+		h[1] = 0;
+		h[2] = (u32)len;
+		memcpy(d, msg, len);
+		barrier();
+	}
+}
+/* ======================================================== */
+
 asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
@@ -579,6 +601,7 @@ asmlinkage __visible void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
+	pcs_canary("PCS-K1 setup_arch ok\n");
 	mm_init_cpumask(&init_mm);
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
@@ -1156,7 +1179,8 @@ static int __ref kernel_init(void *unused)
 	bootprof_log_boot("Kernel_init_done");
 
 	if (ramdisk_execute_command) {
-		ret = run_init_process(ramdisk_execute_command);
+		pcs_canary("PCS-K4 exec init\n");
+	ret = run_init_process(ramdisk_execute_command);
 		if (!ret)
 			return 0;
 		pr_err("Failed to execute %s (error %d)\n",
@@ -1213,6 +1237,7 @@ static noinline void __init kernel_init_freeable(void)
 	lockup_detector_init();
 
 	smp_init();
+	pcs_canary("PCS-K2 smp ok\n");
 	sched_init_smp();
 
 	page_alloc_init_late();
@@ -1220,6 +1245,7 @@ static noinline void __init kernel_init_freeable(void)
 	page_ext_init();
 
 	do_basic_setup();
+	pcs_canary("PCS-K3 basic_setup ok\n");
 
     //#ifdef OPLUS_FEATURE_PHOENIX
     if(phx_set_boot_stage) {

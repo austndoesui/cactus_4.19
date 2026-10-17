@@ -1,1 +1,1 @@
-../../../../vendor/oplus/kernel/oplus_performance/oppo_healthinfo/main/oppo_healthinfo.h
+../../../../peacock_mods/source/vendor/oplus/kernel/oplus_performance/oppo_healthinfo/main/oppo_healthinfo.h
