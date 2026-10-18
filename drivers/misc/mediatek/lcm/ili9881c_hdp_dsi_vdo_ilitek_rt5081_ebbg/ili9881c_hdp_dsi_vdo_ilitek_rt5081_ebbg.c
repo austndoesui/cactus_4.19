@@ -287,7 +287,7 @@ static void lcm_get_params(struct LCM_PARAMS *params)
 	params->dsi.lcm_esd_check_table[0].para_list[2] = 0x06;
 
 #ifdef CONFIG_MTK_ROUND_CORNER_SUPPORT
-	params->round_corner_en = 0;
+	params->round_corner_en = 1;
 	params->corner_pattern_width = 720;
 	params->corner_pattern_height = 32;
 #endif

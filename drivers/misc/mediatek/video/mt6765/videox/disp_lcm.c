@@ -1140,47 +1140,11 @@ struct disp_lcm_handle *disp_lcm_probe(char *plcm_name,
 
 			for (i = 0; i < _lcm_count(); i++) {
 				lcm_drv = lcm_driver_list[i];
-				DISPERR("lcm driver:%s\n", lcm_drv->name);
 				if (!strcmp(lcm_drv->name, plcm_name)) {
 					isLCMFound = true;
 					isLCMInited = true;
 					lcmindex = i;
 					break;
-				}
-			}
-			/* cactus bring-up: LK hands us a panel name that no
-			 * built-in driver matches. Auto-detect only the three
-			 * panels this device shipped with:
-			 *   - boe/ebbg ili9881c (identical compare_id)
-			 *   - tianma hx8394f (no compare_id)
-			 */
-			if (!isLCMFound) {
-				for (i = 0; i < _lcm_count(); i++) {
-					lcm_drv = lcm_driver_list[i];
-					if ((!strcmp(lcm_drv->name,
-					     "ili9881c_hdp_dsi_vdo_ilitek_rt5081_drv_boe") ||
-					     !strcmp(lcm_drv->name,
-					     "ili9881c_hdp_dsi_vdo_ilitek_rt5081_drv_ebbg")) &&
-					    lcm_drv->compare_id != NULL &&
-					    lcm_drv->compare_id() == 1) {
-						isLCMFound = true;
-						isLCMInited = false;
-						lcmindex = i;
-						break;
-					}
-				}
-			}
-			/* no ili9881c panel answered -> assume tianma hx8394f */
-			if (!isLCMFound) {
-				for (i = 0; i < _lcm_count(); i++) {
-					if (!strcmp(lcm_driver_list[i]->name,
-						   "hx8394f_hd720_dsi_vdo_tianma")) {
-						lcm_drv = lcm_driver_list[i];
-						isLCMFound = true;
-						isLCMInited = false;
-						lcmindex = i;
-						break;
-					}
 				}
 			}
 			if (isLCMFound)
@@ -1613,6 +1577,13 @@ static int backlight_remapping_into_tddic_reg(struct disp_lcm_handle *plcm, int 
 	if (strstr(plcm->drv->name, "yogurt") || strstr(plcm->drv->name, "oplus20361")) {
 		return level_brightness;
 	}
+
+	/* cactus: the panels ported from stock 4.9 supply no backlight map or
+	 * brightness range, so the tddic remap below would clamp every level to
+	 * brightness_max (0) and kill the backlight. Pass the level through.
+	 */
+	if (lcm_params->blmap == NULL && lcm_params->brightness_max == 0)
+		return level_brightness;
 
 	if ((is_project(20701))) {
 		if (level > 0) {
