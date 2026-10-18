@@ -559,7 +559,7 @@ static void __init mm_init(void)
 
 
 /* ==== PCS early pstore canary (temporary diagnostics) ==== */
-static void __init pcs_canary(const char *msg)
+static void pcs_canary(const char *msg)
 {
 	u64 a;
 	size_t len = strlen(msg);
