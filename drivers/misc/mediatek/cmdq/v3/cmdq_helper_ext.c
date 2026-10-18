@@ -5422,7 +5422,8 @@ s32 cmdq_helper_mbox_register(struct device *dev)
 		chan_id = cmdq_mbox_chan_id(clt->chan);
 #endif
 
-		if (chan_id < 0 || cmdq_clients[chan_id]) {
+		if (chan_id < 0 || chan_id >= CMDQ_MAX_THREAD_COUNT ||
+		    cmdq_clients[chan_id]) {
 			CMDQ_ERR("channel and client duplicate:%d\n", chan_id);
 			cmdq_mbox_destroy(clt);
 			continue;

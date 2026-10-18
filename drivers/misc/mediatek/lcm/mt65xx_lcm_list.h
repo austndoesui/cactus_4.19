@@ -416,6 +416,7 @@ extern struct LCM_DRIVER nt36525b_hlt_two_yogurt_hdp_dsi_vdo_lcm_drv;
 extern struct LCM_DRIVER nt36525b_txd_yogurt_hdp_dsi_vdo_lcm_drv;
 extern struct LCM_DRIVER ilt9882n_txd_yogurt_hdp_dsi_vdo_lcm_drv;
 extern struct LCM_DRIVER virtual_dsi_psc_vdo_default;
+extern struct LCM_DRIVER ili9881c_hdp_dsi_vdo_ilitek_rt5081_lcm_drv_boe;
 //#endif
 
 extern struct LCM_DRIVER nt36525b_hlt_yogurta_hdp_dsi_vdo_lcm_drv;

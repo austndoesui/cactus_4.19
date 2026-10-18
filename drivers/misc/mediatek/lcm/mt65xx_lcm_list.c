@@ -1403,6 +1403,10 @@ struct LCM_DRIVER *lcm_driver_list[] = {
 	&ilt9882n_txd_yogurta_hdp_dsi_vdo_lcm_drv,
 #endif
 
+#if defined(ILI9881C_HDP_DSI_VDO_ILITEK_RT5081_BOE)
+	&ili9881c_hdp_dsi_vdo_ilitek_rt5081_lcm_drv_boe,
+#endif
+
 #if defined(VIRTUAL_DSI_PSC_VDO_DEFAULT)
 	&virtual_dsi_psc_vdo_default,
 #endif

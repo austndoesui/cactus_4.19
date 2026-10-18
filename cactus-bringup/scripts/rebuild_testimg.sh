@@ -9,6 +9,10 @@ echo "out : size=$(wc -c < "$O") sha=$(sha256sum "$O" | cut -c1-16)"
 cp -f "$O" "$I"
 echo "imgs: size=$(wc -c < "$I") sha=$(sha256sum "$I" | cut -c1-16)"
 
+echo "compiling DTB from cactus_patched.dts ..."
+dtc -I dts -O dtb -o "$P/cactus_dtb.raw" "$P/cactus_patched.dts" 2>/dev/null
+echo "cactus_dtb.raw size: $(wc -c < "$P/cactus_dtb.raw")"
+
 cat "$I" "$P/cactus_dtb.raw" > "$P/Image.gz-dtb"
 echo "Image.gz-dtb size: $(wc -c < "$P/Image.gz-dtb")"
 
