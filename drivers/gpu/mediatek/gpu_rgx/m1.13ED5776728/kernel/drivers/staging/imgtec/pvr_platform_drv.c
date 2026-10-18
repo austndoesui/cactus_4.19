@@ -293,6 +293,11 @@ static struct platform_driver pvr_platform_driver = {
 
 static int __init pvr_init(void)
 {
+	/* PCS: PowerVR bring-up disabled on cactus. MTKRGXDeviceInit() derefs
+	 * gpufreq state (g_pmic/g_clk) that never gets initialized because the
+	 * gpufreq platform driver does not probe here. Revisit: TODO_GPU.md. */
+	return 0;
+#if 0
 	int err;
 
 	DRM_DEBUG_DRIVER("\n");
@@ -323,6 +328,7 @@ static int __init pvr_init(void)
 		return err;
 
 	return pvr_devices_register();
+#endif
 }
 
 static void __exit pvr_exit(void)

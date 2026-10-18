@@ -1031,16 +1031,27 @@ static void __init do_initcall_level(int level)
 		   NULL, &repair_env_string);
 
 	trace_initcall_level(initcall_level_names[level]);
-	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
-		do_one_initcall(initcall_from_entry(fn));
+	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++) {
+		initcall_t __pcs_fn = initcall_from_entry(fn);
+		volatile u64 *pcs_addr = (volatile u64 *)phys_to_virt(0x47d60060ULL);
+		char *pcs_str = (char *)phys_to_virt(0x47d60070ULL);
+
+		*pcs_addr = (u64)(uintptr_t)__pcs_fn;
+		snprintf(pcs_str, 56, "lvl%d %pS", level, (void *)__pcs_fn);
+		barrier();
+		do_one_initcall(__pcs_fn);
+	}
 }
 
 static void __init do_initcalls(void)
 {
 	int level;
 
-	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++)
+	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++) {
+		pr_info("PCS: initcall level %d start\n", level);
 		do_initcall_level(level);
+		pr_info("PCS: initcall level %d done\n", level);
+	}
 }
 
 /*
@@ -1151,7 +1162,9 @@ static int __ref kernel_init(void *unused)
 {
 	int ret;
 
+	pr_info("PCS: kernel_init() entered\n");
 	kernel_init_freeable();
+	pr_info("PCS: kernel_init_freeable() done\n");
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
 	ftrace_free_init_mem();
@@ -1177,6 +1190,8 @@ static int __ref kernel_init(void *unused)
     //#endif
 
 	bootprof_log_boot("Kernel_init_done");
+	pr_info("PCS: about to run init: %s\n",
+		ramdisk_execute_command ? ramdisk_execute_command : "(none)");
 
 	if (ramdisk_execute_command) {
 		pcs_canary("PCS-K4 exec init\n");

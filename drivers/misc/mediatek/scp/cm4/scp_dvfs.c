@@ -497,6 +497,7 @@ void wait_scp_dvfs_init_done(void)
 		if (count > 3000) {
 			pr_err("SCP dvfs driver init fail\n");
 			WARN_ON(1);
+			break; /* PCS: bail instead of spinning forever */
 		}
 	}
 }
@@ -508,6 +509,11 @@ int scp_pll_ctrl_set(unsigned int pll_ctrl_flag, unsigned int pll_sel)
 	int ret = 0;
 
 	pr_debug("%s(%d, %d)\n", __func__, pll_ctrl_flag, pll_sel);
+
+	if (!mt_scp_pll || !dvfs) {
+		pr_notice("scp dvfs not init, skip pll ctrl\n");
+		return -EINVAL;
+	}
 
 	if (pll_sel != CLK_26M) {
 		idx = scp_get_freq_idx(pll_sel);

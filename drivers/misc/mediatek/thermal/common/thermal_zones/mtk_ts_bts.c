@@ -669,6 +669,9 @@ int mtkts_bts_get_hw_temp(void)
 	int t_ret = 0;
 	int t_ret2 = 0;
 
+	if (IS_ERR_OR_NULL(thermistor_ch0))
+		return 25000;	/* ADC ch not ready yet: report ~25C */
+
 	mutex_lock(&BTS_lock);
 
 	/* get HW AP temp (TSAP) */
@@ -1333,8 +1336,9 @@ static int mtkts_bts_probe(struct platform_device *pdev)
 
 
 	thermistor_ch0 = iio_channel_get(&pdev->dev, "thermistor-ch0");
-	ret = IS_ERR(thermistor_ch0);
-	if (ret) {
+	if (IS_ERR(thermistor_ch0)) {
+		ret = PTR_ERR(thermistor_ch0);
+		thermistor_ch0 = NULL;
 		mtkts_bts_printk("[%s] fail to get auxadc iio ch0: %d\n",
 			__func__, ret);
 		return ret;
