@@ -238,7 +238,8 @@ static int mt6370_pmu_suspend(struct device *dev)
 
 	mt_dbg(chip->dev, "%s\n", __func__);
 	mt6370_pmu_irq_suspend(chip);
-	disable_irq(chip->irq);
+	if (chip->irq)
+		disable_irq(chip->irq);
 	return 0;
 }
 
@@ -247,7 +248,8 @@ static int mt6370_pmu_resume(struct device *dev)
 	struct mt6370_pmu_chip *chip = dev_get_drvdata(dev);
 
 	mt_dbg(dev, "%s\n", __func__);
-	enable_irq(chip->irq);
+	if (chip->irq)
+		enable_irq(chip->irq);
 	mt6370_pmu_irq_resume(chip);
 	return 0;
 }

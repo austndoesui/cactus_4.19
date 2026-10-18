@@ -27,7 +27,7 @@ python3 "$P/mkbootimg.py" \
   --pagesize 2048 \
   --header_version 1 \
   --os_version 11.0.0 \
-  --cmdline "bootopt=64S3,32N2,64N2 androidboot.selinux=permissive buildvariant=eng pcsbuild=23obs pcs_deadman=8 ignore_loglevel panic=15" \
+  --cmdline "bootopt=64S3,32N2,64N2 androidboot.selinux=permissive buildvariant=eng log_buf_len=8M pcsbuild=23obs pcs_deadman=8 ignore_loglevel panic=15" \
   -o "$P/test.img"
 
 echo "test.img size: $(wc -c < "$P/test.img") kernel_size=$(python3 -c "import struct;print(struct.unpack_from('<I',open('$P/test.img','rb').read(),8)[0])")"

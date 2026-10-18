@@ -546,8 +546,13 @@ bool usb_cable_connected(struct musb *musb)
 	/* workaround to register psy again */
 	if (IS_ERR_OR_NULL(musb->usb_psy)) {
 		DBG(0, "usb_psy not ready\n");
-		if (mt_usb_psy_init(musb))
-			return false;
+		if (mt_usb_psy_init(musb)) {
+			/* PCS bring-up: no charger psy on cactus -> assume
+			 * a USB cable is attached so device mode powers up.
+			 */
+			DBG(0, "PCS: no usb_psy, assuming cable attached\n");
+			return true;
+		}
 	}
 
 	psy = musb->usb_psy;

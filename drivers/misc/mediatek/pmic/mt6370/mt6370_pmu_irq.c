@@ -352,38 +352,49 @@ int mt6370_pmu_irq_register(struct mt6370_pmu_chip *chip)
 	ret = mt6370_pmu_irq_init(chip);
 	if (ret < 0)
 		return ret;
-	ret = gpio_request_one(pdata->intr_gpio, GPIOF_IN,
-				"mt6370_pmu_irq_gpio");
-	if (ret < 0) {
-		dev_err(chip->dev, "%s: gpio request fail\n", __func__);
-		return ret;
-	}
-	ret = gpio_to_irq(pdata->intr_gpio);
-	if (ret < 0) {
-		dev_err(chip->dev, "%s: irq mapping fail\n", __func__);
-		goto out_pmu_irq;
-	}
+
+	/* cactus bring-up: the irq domain must exist before the MFD
+	 * subdevices probe, because they resolve their virqs through it
+	 * (dsv -> dsv_pos/dsv_neg display bias). Create it first, then
+	 * treat the intr gpio/irq as optional.
+	 */
 	chip->irq_domain = irq_domain_add_linear(chip->dev->of_node,
 						 MT6370_PMU_IRQ_EVT_MAX,
 						 &mt6370_pmu_irq_domain_ops,
 						 chip);
 	if (!chip->irq_domain) {
 		dev_err(chip->dev, "irq domain register fail\n");
-		ret = -EINVAL;
-		goto out_pmu_irq;
+		return -EINVAL;
+	}
+
+	ret = gpio_request_one(pdata->intr_gpio, GPIOF_IN,
+				"mt6370_pmu_irq_gpio");
+	if (ret < 0) {
+		dev_warn(chip->dev, "%s: gpio request fail, irq disabled\n",
+			 __func__);
+		return 0;
+	}
+	ret = gpio_to_irq(pdata->intr_gpio);
+	if (ret < 0) {
+		dev_warn(chip->dev, "%s: irq mapping fail, irq disabled\n",
+			 __func__);
+		gpio_free(pdata->intr_gpio);
+		return 0;
 	}
 	chip->irq = ret;
 	ret = devm_request_threaded_irq(chip->dev, chip->irq, NULL,
 					mt6370_pmu_irq_handler,
 					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 					"mt6370_pmu_irq", chip);
-	if (ret < 0)
-		goto out_pmu_irq;
+	if (ret < 0) {
+		dev_warn(chip->dev, "%s: request irq fail, irq disabled\n",
+			 __func__);
+		gpio_free(pdata->intr_gpio);
+		chip->irq = 0;
+		return 0;
+	}
 	device_init_wakeup(chip->dev, true);
 	return 0;
-out_pmu_irq:
-	gpio_free(pdata->intr_gpio);
-	return ret;
 }
 EXPORT_SYMBOL(mt6370_pmu_irq_register);
 
@@ -391,9 +402,14 @@ void mt6370_pmu_irq_unregister(struct mt6370_pmu_chip *chip)
 {
 	struct mt6370_pmu_platform_data *pdata = dev_get_platdata(chip->dev);
 
+	if (!chip->irq_domain)
+		return;
 	device_init_wakeup(chip->dev, false);
-	devm_free_irq(chip->dev, chip->irq, chip);
+	if (chip->irq) {
+		devm_free_irq(chip->dev, chip->irq, chip);
+		gpio_free(pdata->intr_gpio);
+	}
 	irq_domain_remove(chip->irq_domain);
-	gpio_free(pdata->intr_gpio);
+	chip->irq_domain = NULL;
 }
 EXPORT_SYMBOL(mt6370_pmu_irq_unregister);
