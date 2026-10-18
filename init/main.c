@@ -50,6 +50,12 @@
 #include <linux/interrupt.h>
 #include <linux/taskstats_kern.h>
 #include <linux/delayacct.h>
+#include <linux/reboot.h>
+#include <asm/processor.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
+#include <linux/atomic.h>
+#include <linux/spinlock.h>
 #include <linux/unistd.h>
 #include <linux/utsname.h>
 #include <linux/rmap.h>
@@ -108,6 +114,10 @@
 //#endif  //OPLUS_FEATURE_PHOENIX
 
 static int kernel_init(void *);
+
+static void pcs_trace(const char *fmt, ...);
+static void pcs_canary(const char *msg);
+static void pcs_deadman_start(void);
 
 extern void init_IRQ(void);
 extern void radix_tree_init(void);
@@ -404,13 +414,17 @@ static noinline void __ref rest_init(void)
 	struct task_struct *tsk;
 	int pid;
 
+	pcs_trace("rest_init: enter\n");
+	pcs_deadman_start();
 	rcu_scheduler_starting();
+	pcs_trace("rest_init: rcu_starting done\n");
 	/*
 	 * We need to spawn init first so that it obtains pid 1, however
 	 * the init task will end up wanting to create kthreads, which, if
 	 * we schedule it before we create kthreadd, will OOPS.
 	 */
 	pid = kernel_thread(kernel_init, NULL, CLONE_FS);
+	pcs_trace("rest_init: kernel_init pid=%d\n", pid);
 	/*
 	 * Pin init on the boot CPU. Task migration is not properly working
 	 * until sched_init_smp() has been run. It will set the allowed
@@ -420,12 +434,17 @@ static noinline void __ref rest_init(void)
 	tsk = find_task_by_pid_ns(pid, &init_pid_ns);
 	set_cpus_allowed_ptr(tsk, cpumask_of(smp_processor_id()));
 	rcu_read_unlock();
+	pcs_trace("rest_init: init pinned\n");
 
 	numa_default_policy();
 	pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES);
+	pcs_trace("rest_init: kthreadd pid=%d\n", pid);
 	rcu_read_lock();
+	pcs_trace("rest_init: A rcu_lock\n");
 	kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
+	pcs_trace("rest_init: B task found\n");
 	rcu_read_unlock();
+	pcs_trace("rest_init: C rcu_unlock\n");
 
 	/*
 	 * Enable might_sleep() and smp_processor_id() checks.
@@ -435,15 +454,19 @@ static noinline void __ref rest_init(void)
 	 * already, but it's stuck on the kthreadd_done completion.
 	 */
 	system_state = SYSTEM_SCHEDULING;
+	pcs_trace("rest_init: D system_state\n");
 
 	complete(&kthreadd_done);
+	pcs_trace("rest_init: E kthreadd_done completed\n");
 
 	/*
 	 * The boot idle thread must execute schedule()
 	 * at least once to get things moving:
 	 */
+	pcs_trace("rest_init: schedule_preempt_disabled\n");
 	schedule_preempt_disabled();
 	/* Call into cpu_idle with preempt disabled */
+	pcs_trace("rest_init: cpu_startup_entry\n");
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 
@@ -558,26 +581,90 @@ static void __init mm_init(void)
 }
 
 
-/* ==== PCS early pstore canary (temporary diagnostics) ==== */
+/* ==== PCS pstore-region boot trace + deadman (temporary diagnostics) ==== */
+#define PCS_TRACE_BASE	0x47c90000ULL
+#define PCS_TRACE_SIZE	0xd0000U	/* 0x47c90000..0x47d60000 (LK-dumped) */
+
+static u32 pcs_trace_pos = 0x80;
+static bool pcs_trace_cleared;
+static unsigned long pcs_last_activity;
+static DEFINE_SPINLOCK(pcs_trace_lock);
+
+static void pcs_trace(const char *fmt, ...)
+{
+	va_list ap;
+	char buf[200];
+	int n;
+	unsigned long flags;
+	u8 *base;
+	u32 start;
+
+	va_start(ap, fmt);
+	n = vscnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	if (n <= 0)
+		return;
+
+	spin_lock_irqsave(&pcs_trace_lock, flags);
+	base = (u8 *)phys_to_virt(PCS_TRACE_BASE);
+	if (!pcs_trace_cleared) {
+		pcs_trace_cleared = true;
+		memset(base, 0, PCS_TRACE_SIZE);
+		__flush_dcache_area(base, PCS_TRACE_SIZE);
+		pcs_trace_pos = 0x80;
+	}
+	if (pcs_trace_pos + n + 4 >= PCS_TRACE_SIZE)
+		pcs_trace_pos = 0x80;
+	start = pcs_trace_pos;
+	memcpy(base + start, buf, n);
+	pcs_trace_pos += n;
+	base[pcs_trace_pos] = 0;
+	wmb();
+	__flush_dcache_area(base + start, n + 1);
+	pcs_last_activity = jiffies;
+	spin_unlock_irqrestore(&pcs_trace_lock, flags);
+}
+
 static void pcs_canary(const char *msg)
 {
-	u64 a;
-	size_t len = strlen(msg);
-
-	if (len > 240)
-		len = 240;
-	for (a = 0x47c90000ULL; a < 0x47d60000ULL; a += 0x10000ULL) {
-		volatile u32 *h = (volatile u32 *)phys_to_virt(a);
-		u8 *d = (u8 *)h + 12;
-
-		h[0] = 0x43474244;	/* PERSISTENT_RAM_SIG ^ 0 */
-		h[1] = 0;
-		h[2] = (u32)len;
-		memcpy(d, msg, len);
-		barrier();
-	}
+	pcs_trace("%s", msg);
 }
-/* ======================================================== */
+
+static int pcs_deadman_sec;
+static atomic_t pcs_stage = ATOMIC_INIT(0);
+static struct timer_list pcs_wd_timer;
+
+static int __init pcs_deadman_setup(char *str)
+{
+	get_option(&str, &pcs_deadman_sec);
+	return 1;
+}
+__setup("pcs_deadman=", pcs_deadman_setup);
+
+static void pcs_wd_fn(struct timer_list *t)
+{
+	unsigned long stall = (pcs_deadman_sec > 0) ?
+			      (unsigned long)pcs_deadman_sec : 12UL;
+
+	if (time_after(jiffies, pcs_last_activity + stall * HZ)) {
+		pcs_trace("PCS-DEADMAN: stalled >%lus, resetting\n", stall);
+		emergency_restart();
+		for (;;)
+			cpu_relax();
+	}
+	mod_timer(t, jiffies + 2 * HZ);
+}
+
+static void pcs_deadman_start(void)
+{
+	if (pcs_deadman_sec <= 0)
+		return;
+	pcs_last_activity = jiffies;
+	timer_setup(&pcs_wd_timer, pcs_wd_fn, 0);
+	mod_timer(&pcs_wd_timer, jiffies + 2 * HZ);
+	pcs_trace("DM: stall watchdog armed\n");
+}
+/* ====================================================================== */
 
 asmlinkage __visible void __init start_kernel(void)
 {
@@ -601,7 +688,7 @@ asmlinkage __visible void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
-	pcs_canary("PCS-K1 setup_arch ok\n");
+	pcs_trace("PCS-K1 B26 setup_arch ok\n");
 	mm_init_cpumask(&init_mm);
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
@@ -809,6 +896,7 @@ asmlinkage __visible void __init start_kernel(void)
 	}
 
 	/* Do the rest non-__init'ed, we're now alive */
+	pcs_trace("start_kernel done, entering rest_init\n");
 	rest_init();
 
 	prevent_tail_call_optimization();
@@ -1031,16 +1119,15 @@ static void __init do_initcall_level(int level)
 		   NULL, &repair_env_string);
 
 	trace_initcall_level(initcall_level_names[level]);
+	pcs_trace("initcall level %d start\n", level);
 	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++) {
 		initcall_t __pcs_fn = initcall_from_entry(fn);
-		volatile u64 *pcs_addr = (volatile u64 *)phys_to_virt(0x47d60060ULL);
-		char *pcs_str = (char *)phys_to_virt(0x47d60070ULL);
 
-		*pcs_addr = (u64)(uintptr_t)__pcs_fn;
-		snprintf(pcs_str, 56, "lvl%d %pS", level, (void *)__pcs_fn);
+		pcs_trace("  lvl%d j=%lu %pS\n", level, jiffies, (void *)__pcs_fn);
 		barrier();
 		do_one_initcall(__pcs_fn);
 	}
+	pcs_trace("initcall level %d done\n", level);
 }
 
 static void __init do_initcalls(void)
@@ -1103,11 +1190,22 @@ void __init load_default_modules(void)
 
 static int run_init_process(const char *init_filename)
 {
+	int __pcs_ret;
+
 	argv_init[0] = init_filename;
+	pcs_trace("run_init_process exec %s\n", init_filename);
+	pr_info("PCS: run_init_process exec %s\n", init_filename);
 	pr_info("Run %s as init process\n", init_filename);
-	return do_execve(getname_kernel(init_filename),
+	atomic_set(&pcs_stage, 2);
+	del_timer(&pcs_wd_timer);
+	pcs_trace("run_init_process: watchdog cancelled\n");
+	__pcs_ret = do_execve(getname_kernel(init_filename),
 		(const char __user *const __user *)argv_init,
 		(const char __user *const __user *)envp_init);
+	pcs_trace("run_init_process %s returned %d\n", init_filename, __pcs_ret);
+	pr_info("PCS: run_init_process %s returned %d (userspace handoff)\n",
+		init_filename, __pcs_ret);
+	return __pcs_ret;
 }
 
 static int try_to_run_init_process(const char *init_filename)
@@ -1163,8 +1261,11 @@ static int __ref kernel_init(void *unused)
 	int ret;
 
 	pr_info("PCS: kernel_init() entered\n");
+	atomic_set(&pcs_stage, 1);
+	pcs_trace("kernel_init entered\n");
 	kernel_init_freeable();
 	pr_info("PCS: kernel_init_freeable() done\n");
+	pcs_trace("kernel_init_freeable done\n");
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
 	ftrace_free_init_mem();
@@ -1190,6 +1291,8 @@ static int __ref kernel_init(void *unused)
     //#endif
 
 	bootprof_log_boot("Kernel_init_done");
+	pcs_trace("about to run init: %s\n",
+		  ramdisk_execute_command ? ramdisk_execute_command : "(none)");
 	pr_info("PCS: about to run init: %s\n",
 		ramdisk_execute_command ? ramdisk_execute_command : "(none)");
 
@@ -1230,7 +1333,9 @@ static noinline void __init kernel_init_freeable(void)
 	/*
 	 * Wait until kthreadd is all set-up.
 	 */
+	pcs_trace("kif: wait_for_completion kthreadd_done\n");
 	wait_for_completion(&kthreadd_done);
+	pcs_trace("kif: kthreadd ready\n");
 
 	/* Now the scheduler is fully set up and can do blocking allocations */
 	gfp_allowed_mask = __GFP_BITS_MASK;
@@ -1243,23 +1348,33 @@ static noinline void __init kernel_init_freeable(void)
 	cad_pid = task_pid(current);
 
 	smp_prepare_cpus(setup_max_cpus);
+	pcs_trace("kif: smp_prepare_cpus done\n");
 
 	workqueue_init();
+	pcs_trace("kif: workqueue_init done\n");
 
 	init_mm_internals();
+	pcs_trace("kif: init_mm_internals done\n");
 
 	do_pre_smp_initcalls();
+	pcs_trace("kif: do_pre_smp_initcalls done\n");
 	lockup_detector_init();
+	pcs_trace("kif: lockup_detector_init done\n");
 
 	smp_init();
+	pcs_trace("kif: smp_init done\n");
 	pcs_canary("PCS-K2 smp ok\n");
 	sched_init_smp();
+	pcs_trace("kif: sched_init_smp done\n");
 
 	page_alloc_init_late();
 	/* Initialize page ext after all struct pages are initialized. */
 	page_ext_init();
+	pcs_trace("kif: page_ext_init done\n");
 
+	pcs_trace("kif: do_basic_setup enter\n");
 	do_basic_setup();
+	pcs_trace("kif: do_basic_setup done\n");
 	pcs_canary("PCS-K3 basic_setup ok\n");
 
     //#ifdef OPLUS_FEATURE_PHOENIX

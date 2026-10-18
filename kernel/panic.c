@@ -220,6 +220,8 @@ void panic(const char *fmt, ...)
 	if (vendor_panic_cb)
 		vendor_panic_cb(0);
 	pr_emerg("Kernel panic - not syncing: %s\n", buf);
+	pr_emerg("PCS: KERNEL PANIC comm=%s pid=%d reason=%s\n",
+		 current->comm, current->pid, buf);
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 	/*
 	 * Avoid nested stack-dumping if a panic occurs during oops processing

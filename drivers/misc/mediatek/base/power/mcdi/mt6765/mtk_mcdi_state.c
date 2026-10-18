@@ -60,7 +60,7 @@ static struct cpuidle_driver mtk_cpuidle_driver_set_0 = {
 		.name			= "mcdi",
 		.desc			= "mcdi",
 	},
-	.state_count = 2,
+	.state_count = 1,
 	.safe_state_index = 0,
 };
 
@@ -83,7 +83,7 @@ static struct cpuidle_driver mtk_cpuidle_driver_set_1 = {
 		.name			= "mcdi",
 		.desc			= "mcdi",
 	},
-	.state_count = 2,
+	.state_count = 1,
 	.safe_state_index = 0,
 };
 

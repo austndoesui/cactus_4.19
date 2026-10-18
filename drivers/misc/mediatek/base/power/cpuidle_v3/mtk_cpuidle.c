@@ -224,12 +224,14 @@ static void cpuidle_fp_init(void)
 
 static inline void cpuidle_fp(int cpu, int checkpoint)
 {
-	cpuidle_fp_va[cpu] |= (1 << checkpoint);
+	if (cpuidle_fp_va)
+		cpuidle_fp_va[cpu] |= (1 << checkpoint);
 }
 
 static inline void cpuidle_fp_reset(int cpu)
 {
-	cpuidle_fp_va[cpu] = 0;
+	if (cpuidle_fp_va)
+		cpuidle_fp_va[cpu] = 0;
 }
 
 #else
