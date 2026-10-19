@@ -1,19 +1,50 @@
-Linux kernel
-============
+# Linux 4.19 Kernel Bring-Up for MediaTek MT6765 (Xiaomi Redmi 6A / `cactus`)
 
-There are several guides for kernel developers and users. These guides can
-be rendered in a number of formats, like HTML and PDF. Please read
-Documentation/admin-guide/README.rst first.
+An open-source effort to port and bring up **Linux Kernel 4.19** for the Xiaomi Redmi 6A (`cactus`), upgrading the legacy chipset baseline from Android kernel 4.9 to modern Linux 4.19 LTS infrastructure. 
 
-In order to build the documentation, use ``make htmldocs`` or
-``make pdfdocs``.  The formatted documentation can also be read online at:
+This repository provides the underlying kernel source, backported drivers, and devicetrees required to boot modern Android Generic System Images (GSIs) and custom ROMs on EOL hardware.
 
-    https://www.kernel.org/doc/html/latest/
+---
 
-There are various text files in the Documentation/ subdirectory,
-several of them using the Restructured Text markup notation.
-See Documentation/00-INDEX for a list of what is contained in each file.
+## 🛠 Project Status & Bring-Up Progress
 
-Please read the Documentation/process/changes.rst file, as it contains the
-requirements for building and running the kernel, and information about
-the problems which may result by upgrading your kernel.
+| Subsystem / Feature | Status | Details |
+| :--- | :---: | :--- |
+| **Kernel Boot** | 🟢 Working | Boots 4.19 baseline with custom bring-up patches |
+| **Display / LCM** | 🟢 Working | GCE / CMDQ, pinctrl/eint, mtkfb fixed |
+| **Backlight** | 🟢 Working | Resolved dead backlight issue & panel auto-detect logic |
+| **Touchscreen** | 🟢 Working | FocalTech FT5x26 bring-up completed |
+| **USB Subsystem** | 🟢 Working | USB bring-up & irq non-fatal handlers |
+| **Stability / Panic Watchdog** | 🟢 Working | Cleared late-initcall panics (GPU/SCP/thermal) & stall watchdogs |
+| **Audio / Sound** | 🟡 WIP | Bring-up in progress |
+| **Sensors & Connectivity** | 🟡 WIP | Under active testing |
+
+---
+
+## 📌 Technical Highlights & Modifications
+
+* **Driver Backports & Re-Architecture:** Adapted legacy MediaTek display (`mtkfb`, `GCE/CMDQ`) and touch driver stacks (`FocalTech FT5x26`) to function under Linux 4.19 kernel interfaces.
+* **Boot & Observability Fixes:** Resolved `pcs_canary` memory drops during `free_initmem`, suppressed non-fatal MT6370 IRQ errors, and stabilized idle guard/stall watchdog routines during early boot.
+* **Modern GSI Support:** Refactored kernel structures to ensure compatibility with modern Android HALs and Treble/GSI environments (Android 14+).
+
+---
+
+## Building the Kernel
+
+### Prerequisites
+* A standard Linux build host (Ubuntu 22.04 LTS or Debian recommended)
+* A compatible `aarch64-linux-android-` or `clang` cross-compiler toolchain
+
+### Quick Build Guide
+
+```bash
+# Set up build environment
+export ARCH=arm64
+export SUBARCH=arm64
+export CROSS_COMPILE=aarch64-linux-android-
+
+# Generate default configuration
+make cactus_defconfig
+
+# Compile kernel image
+make -j$(nproc)
