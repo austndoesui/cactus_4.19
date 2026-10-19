@@ -43,6 +43,7 @@ struct pinctrl_state *pins_default;
 struct pinctrl_state *eint_as_int, *eint_output0,
 		*eint_output1, *rst_output0, *rst_output1;
 const struct of_device_id touch_of_match[] = {
+	{ .compatible = "mediatek,touch", },
 	{ .compatible = "goodix,touch", },
 	{},
 };
@@ -531,6 +532,7 @@ static int tpd_probe(struct platform_device *pdev)
 {
 	int touch_type = 1;	/* 0:R-touch, 1: Cap-touch */
 	int i = 0;
+
 #ifndef CONFIG_CUSTOM_LCM_X
 #ifdef CONFIG_LCM_WIDTH
 	unsigned long tpd_res_x = 0, tpd_res_y = 0;
@@ -718,9 +720,17 @@ static int tpd_remove(struct platform_device *pdev)
 /* called when loaded into kernel */
 static void tpd_init_work_callback(struct work_struct *work)
 {
+	int ret;
+
 	TPD_DEBUG("MediaTek touch panel driver init\n");
-	if (platform_driver_register(&tpd_driver) != 0)
-		TPD_DMESG("unable to register touch panel driver.\n");
+	ret = platform_driver_register(&tpd_driver);
+	if (ret) {
+		TPD_DMESG("unable to register touch panel driver. ret=%d\n", ret);
+	} else {
+		tpd_device.dev.of_node =
+			of_find_compatible_node(NULL, NULL, "mediatek,touch");
+		platform_device_register(&tpd_device);
+	}
 }
 static int __init tpd_device_init(void)
 {

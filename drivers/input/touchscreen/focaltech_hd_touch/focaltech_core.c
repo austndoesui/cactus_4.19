@@ -900,16 +900,49 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
 	return ret;
 }
 
+static void fts_power_pinctrl_ctrl(struct fts_ts_data *ts_data, int enable)
+{
+	struct pinctrl *pc;
+	struct pinctrl_state *s;
+
+	if (!ts_data->client)
+		return;
+
+	pc = devm_pinctrl_get(&ts_data->client->dev);
+	if (IS_ERR(pc))
+		return;
+	s = pinctrl_lookup_state(pc, "state_focal_power_output1");
+	if (IS_ERR(s))
+		return;
+	if (enable) {
+		struct pinctrl_state *s0;
+
+		s0 = pinctrl_lookup_state(pc, "state_focal_power_output0");
+		if (!IS_ERR(s0))
+			pinctrl_select_state(pc, s0);
+		msleep(10);
+		pinctrl_select_state(pc, s);
+		msleep(20);
+	} else {
+		s = pinctrl_lookup_state(pc, "state_focal_power_output0");
+		if (!IS_ERR(s))
+			pinctrl_select_state(pc, s);
+	}
+}
+
 static int fts_power_source_init(struct fts_ts_data *ts_data)
 {
 	int ret = 0;
 
 	FTS_FUNC_ENTER();
+	fts_power_pinctrl_ctrl(ts_data, 1);
 	ts_data->vdd = regulator_get(tpd->tpd_dev, "vtouch");
 	if (IS_ERR_OR_NULL(ts_data->vdd)) {
 		ret = PTR_ERR(ts_data->vdd);
 		FTS_ERROR("get vdd regulator failed,ret=%d", ret);
-		return ret;
+		ts_data->vdd = NULL;
+		ts_data->power_disabled = true;
+		return 0;
 	}
 
 	if (regulator_count_voltages(ts_data->vdd) > 0) {
@@ -945,6 +978,8 @@ static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 {
 	int ret = 0;
 
+	fts_power_pinctrl_ctrl(ts_data, 0);
+
 	ret = fts_power_source_ctrl(ts_data, DISABLE);
 	if (ret < 0)
 		FTS_ERROR("power off fail, ret=%d", ret);
@@ -956,6 +991,8 @@ static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 static int fts_power_source_resume(struct fts_ts_data *ts_data)
 {
 	int ret = 0;
+
+	fts_power_pinctrl_ctrl(ts_data, 1);
 
 	ret = fts_power_source_ctrl(ts_data, ENABLE);
 	if (ret < 0)
@@ -1285,7 +1322,8 @@ static const struct i2c_device_id fts_ts_id[] = {
 	{FTS_DRIVER_NAME, 0}, {},
 };
 static const struct of_device_id fts_dt_match[] = {
-	{.compatible = "mediatek,cap_touch"}, {},
+	{.compatible = "mediatek,cap_touch"},
+	{.compatible = "mediatek,ft_cap_touch"}, {},
 };
 MODULE_DEVICE_TABLE(of, fts_dt_match);
 

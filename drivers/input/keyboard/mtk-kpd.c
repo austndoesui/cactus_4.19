@@ -739,8 +739,9 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 			keypad->base, &keypad->base, keypad->irqnr);
 	err = kpd_gpio_init(&pdev->dev);
 	if (err) {
-		pr_debug("gpio init failed\n");
-		goto err_unprepare_clk;
+		pr_info("cactus: kpd pinctrl unavailable (%d), using hw keyscan\n",
+			err);
+		err = 0;
 	}
 
 	err = kpd_get_dts_info(keypad, pdev->dev.of_node);
@@ -818,49 +819,53 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 		vol_key_info.homekey_as_vol_up = false;
 	}
 
-	if (!vol_key_info.homekey_as_vol_up) {  // means not home key as volume up, defined on dws
-		err = kpd_request_named_gpio(kpd_oppo, "keypad,volume-up",
-				&vol_key_info.vol_up_gpio);
+	if (of_find_property(dev->of_node, "keypad,volume-down", NULL)) {
+		if (!vol_key_info.homekey_as_vol_up) {  // means not home key as volume up, defined on dws
+			err = kpd_request_named_gpio(kpd_oppo, "keypad,volume-up",
+					&vol_key_info.vol_up_gpio);
 
+			if (err) {
+				pr_err("%s lfc request keypad,volume-up fail\n", __func__);
+				return -1;
+			}
+			err = gpio_direction_input(vol_key_info.vol_up_gpio);
+
+			if (err < 0) {
+				dev_err(&kpd_oppo->pdev->dev,
+					"gpio_direction_input failed for vol_up INT.\n");
+				return -1;
+			}
+		}
+
+		err = kpd_request_named_gpio(kpd_oppo, "keypad,volume-down",
+				&vol_key_info.vol_down_gpio);
 		if (err) {
-			pr_err("%s lfc request keypad,volume-up fail\n", __func__);
+			pr_err("%s request keypad,volume-down fail\n", __func__);
 			return -1;
 		}
-		err = gpio_direction_input(vol_key_info.vol_up_gpio);
+		err = gpio_direction_input(vol_key_info.vol_down_gpio);
 
 		if (err < 0) {
 			dev_err(&kpd_oppo->pdev->dev,
-				"gpio_direction_input failed for vol_up INT.\n");
+				"gpio_direction_input failed for vol_down INT.\n");
 			return -1;
 		}
+
+		if (init_custom_gpio_state(pdev) < 0) {
+			pr_err("init gpio state failed\n");
+			return -1;
+		}
+
+		//disable keypad scan function
+		//kpd_wakeup_src_setting(0);		//for kernel-4.19 without this function
+
+		//enable_irq(vol_key_info.vol_up_irq);
+		vol_key_info.vol_up_irq_enabled = 1;
+		//enable_irq(vol_key_info.vol_down_irq);
+		vol_key_info.vol_down_irq_enabled = 1;
+	} else {
+		pr_info("cactus: no keypad,volume GPIOs in DT, using hw keyscan\n");
 	}
-
-	err = kpd_request_named_gpio(kpd_oppo, "keypad,volume-down",
-			&vol_key_info.vol_down_gpio);
-	if (err) {
-		pr_err("%s request keypad,volume-down fail\n", __func__);
-		return -1;
-	}
-	err = gpio_direction_input(vol_key_info.vol_down_gpio);
-
-	if (err < 0) {
-		dev_err(&kpd_oppo->pdev->dev,
-			"gpio_direction_input failed for vol_down INT.\n");
-		return -1;
-	}
-
-	if (init_custom_gpio_state(pdev) < 0) {
-		pr_err("init gpio state failed\n");
-		return -1;
-	}
-
-	//disable keypad scan function
-	//kpd_wakeup_src_setting(0);		//for kernel-4.19 without this function
-
-	//enable_irq(vol_key_info.vol_up_irq);
-	vol_key_info.vol_up_irq_enabled = 1;
-	//enable_irq(vol_key_info.vol_down_irq);
-	vol_key_info.vol_down_irq_enabled = 1;
 
 	__set_bit(KEY_VOLUMEDOWN, keypad->input_dev->keybit);
 	__set_bit(KEY_VOLUMEUP, keypad->input_dev->keybit);
