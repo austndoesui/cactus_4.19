@@ -1,0 +1,69 @@
+name: Cactus 4.19 recovery kernel
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'fs/pstore/cactus_early_snapshot.c'
+      - 'fs/pstore/Makefile'
+      - '.github/workflows/cactus-recovery.yml'
+
+jobs:
+  kernel:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src/kernel_oppo_4.19r
+      - name: Install prerequisites
+        run: sudo apt-get update && sudo apt-get install -y make python3 bc bison flex libssl-dev libelf-dev cpio
+      - name: Fetch companion vendor sources
+        run: |
+          git clone --depth 1 https://github.com/PeacockProject/android_kernel_modules_oppo_mt6765.git src/peacock_mods/source
+      - name: Fetch Android 10 toolchains
+        run: |
+          mkdir -p toolchain
+          git clone --depth 1 --branch android10-release https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 toolchain/clang
+          git clone --depth 1 --branch android10-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain/aarch64-linux-android-4.9
+          git clone --depth 1 --branch android10-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 toolchain/arm-linux-androideabi-4.9
+          test -x toolchain/clang/clang-r353983c/bin/clang
+      - name: Build kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$GITHUB_WORKSPACE/toolchain/clang/clang-r353983c/bin:$GITHUB_WORKSPACE/toolchain/aarch64-linux-android-4.9/bin:$GITHUB_WORKSPACE/toolchain/arm-linux-androideabi-4.9/bin:$PATH"
+          export ARCH=arm64 CROSS_COMPILE=aarch64-linux-androidkernel- CROSS_COMPILE_ARM32=arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu-
+          cd src/kernel_oppo_4.19r
+          ln -sfn kernel_oppo_4.19r ../kernel-4.19
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('.')
+          broken = []
+          for path in root.rglob('*'):
+              if path.is_symlink() and not path.exists():
+                  target = path.readlink().as_posix()
+                  offset = target.find('vendor/')
+                  if offset >= 0:
+                      fixed = Path('../peacock_mods/source') / target[offset:]
+                      resolved = (path.parent / fixed).resolve()
+                      candidate = (root / '../peacock_mods/source' / target[offset:]).resolve()
+                      if candidate.exists():
+                          path.unlink()
+                          path.symlink_to(candidate)
+                          continue
+                  broken.append(str(path))
+          if broken:
+              raise SystemExit('Unresolved links: ' + ', '.join(broken[:15]))
+          PY
+          source ./oplus_native_features.sh
+          make O=out ARCH=arm64 oppo6765_defconfig
+          make O=out ARCH=arm64 olddefconfig
+          clang --version | head -1
+          make O=out ARCH=arm64 -j4 CC=clang KCFLAGS="-Wno-missing-braces" Image.gz
+          test -s out/arch/arm64/boot/Image.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cactus-4.19-Image-gz
+          path: src/kernel_oppo_4.19r/out/arch/arm64/boot/Image.gz
+          if-no-files-found: error
