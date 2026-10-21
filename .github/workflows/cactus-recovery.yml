@@ -20,7 +20,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y make python3 bc bison flex libssl-dev libelf-dev cpio
       - name: Fetch companion vendor sources
         run: |
-          git clone --depth 1 https://github.com/PeacockProject/android_kernel_modules_oppo_mt6765.git src/peacock_mods/source
+          git clone --depth 1 https://github.com/PeacockProject/android_kernel_modules_oppo_mt6765.git src/peacock_mods
       - name: Fetch Android 10 toolchains
         run: |
           mkdir -p toolchain
